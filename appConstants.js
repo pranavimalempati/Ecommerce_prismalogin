@@ -9,7 +9,8 @@ const appConst = {
         in_correct_userName:'incorrect or invalid username',
         invalid_email:'invalid email',
         user_notexist:'user does not exists',
-        session_expire:"session expired"
+        session_expire:"session expired",
+        token_expire:"token expired"
     }
 }
 module.exports = appConst

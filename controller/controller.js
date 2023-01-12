@@ -1,5 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
-const jwt =require('jsonwebtoken')
+const jwt = require('jsonwebtoken')
 const bcrypt = require("bcryptjs");
 const nodemailer = require('nodemailer');
 const appConst = require("../appConstants");
@@ -30,57 +30,58 @@ const add = async (req, res) => {
 //token updation
 const login = async (req, res) => {
   try {
-    let data =[] 
-    let errMsg = [] 
+    let data = []
+    let errMsg = []
     if (req.session.views) {
       req.session.views++
-    let user = JSON.parse(JSON.stringify(req.body.user));
-    const find_user = await prisma.user.findUnique({
-      where: {
-        userName: String(user.userName),
-      },
-    });
-    if (find_user) {
-      const issame = await bcrypt.compare(user.password, find_user.password);
+      let user = JSON.parse(JSON.stringify(req.body.user));
+      const find_user = await prisma.user.findUnique({
+        where: {
+          userName: String(user.userName),
+        },
+      });
+      if (find_user) {
+        const issame = await bcrypt.compare(user.password, find_user.password);
 
-      if (issame) {
-        user.token = jwt.sign({ id: find_user.id }, process.env.secretKey);
-        console.log(user.token);
+        if (issame) {
+          user.token = jwt.sign({ id: find_user.id }, process.env.secretKey);
+          console.log(user.token);
 
-        const resp = await prisma.user.update({
-          where:{
-            userName: String(user.userName)
-          },
-          data:{
-            userName:user.userName,
-            password:find_user.password,
-            token:user.token}
+          const resp = await prisma.user.update({
+            where: {
+              userName: String(user.userName)
+            },
+            data: {
+              userName: user.userName,
+              password: find_user.password,
+              token: user.token
+            }
           });
 
           data.push(resp)
+        } else {
+          errMsg.push({ message: appConst.status.in_correct_password })
+        }
       } else {
-        errMsg.push({message:appConst.status.in_correct_password})
+        errMsg.push({ message: appConst.status.in_correct_userName })
       }
     } else {
-      errMsg.push({message:appConst.status.in_correct_userName})
+      req.session.views = 1
+      errMsg.push({ message: appConst.status.session_expire })
     }
-  } else {
-    req.session.views = 1
-    errMsg.push({message:appConst.status.session_expire})
-}
-if (errMsg.length > 0) {
-  res.status(400).json({
-      status: appConst.status.fail,
-      response: errMsg,
-      message: appConst.status.invalid_request,
-  });
-} else {
-  res.status(200).json({
-      status: appConst.status.success,
-      response: { data },
-      message: appConst.status.success,
-  });
-}
+    if (errMsg.length > 0) {
+      res.status(400).json({
+        status: appConst.status.fail,
+        response: errMsg,
+        message: appConst.status.invalid_request,
+      });
+    } else {
+      res.status(200).json({
+        status: appConst.status.success,
+        response: { data },
+        message: appConst.status.success,
+      });
+    }
   } catch (error) {
     res.status(400).json({
       status: appConst.status.fail,
@@ -94,22 +95,26 @@ if (errMsg.length > 0) {
 const emailSend = async (req, res) => {
   let user = JSON.parse(JSON.stringify(req.body.user));
   try {
-    let data =[] 
-    let errMsg = [] 
+    let data = []
+    let errMsg = []
     const find_user = await prisma.user.findUnique({
       where: {
         email: String(user.email),
       },
     });
-    if(find_user) {
-      user.forgettoken = jwt.sign({ email: find_user.email },process.env.secretKey);
-       
+    if (find_user) {
+      user.forgettoken = jwt.sign({ email: find_user.email }, process.env.secretKey);
+      const date = new Date()
+      // const time = new Date(date.getTime() + 1 * 60000).toLocaleTimeString()
+      const time = new Date(date.getTime() + 5 * 60000).toLocaleTimeString()
       const resp = await prisma.user.update({
         where: {
           email: String(user.email),
         },
         data: {
           forgettoken: user.forgettoken,
+          expiretime: time
+
         },
       });
       const find_email = await prisma.user.findFirst({
@@ -118,7 +123,7 @@ const emailSend = async (req, res) => {
           forgettoken: String(user.forgettoken)
         },
       });
-      if(find_email){
+      if (find_email) {
         let transporter = nodemailer.createTransport({
           host: "smtp.mailtrap.io",
           port: 2525,
@@ -138,80 +143,138 @@ const emailSend = async (req, res) => {
         };
         transporter.sendMail(mailOptions, (err, info) => {
           if (err) {
-            errMsg.push({message:err.message})
+            errMsg.push({ message: err.message })
             return err;
           }
           console.log("Mail Sent" + info.response);
         });
-      }else{
-        errMsg.push({message:appConst.status.invalid_email})
+      } else {
+        errMsg.push({ message: appConst.status.invalid_email })
       }
       data.push(resp)
-    }else{
-      errMsg.push({message:appConst.status.user_notexist})
-    } 
+    } else {
+      errMsg.push({ message: appConst.status.user_notexist })
+    }
     if (errMsg.length > 0) {
       res.status(400).json({
-          status: appConst.status.fail,
-          response: errMsg,
-          message: appConst.status.invalid_request,
+        status: appConst.status.fail,
+        response: errMsg,
+        message: appConst.status.invalid_request,
       });
     } else {
       res.status(200).json({
-          status: appConst.status.success,
-          response: { data },
-          message: appConst.status.mail_sent,
+        status: appConst.status.success,
+        response: { data },
+        message: appConst.status.mail_sent,
       });
     }
   } catch (error) {
     console.log(error.message);
     res.status(400).json({
-      status:appConst.status.fail,
+      status: appConst.status.fail,
       message: error.message,
     });
   }
 };
 
 // creating the new password
-const changepswd = async(req,res)=>{
+const changepswd = async (req, res) => {
   let user = JSON.parse(JSON.stringify(req.body.user));
   try {
+    let data = []
+    let errMsg = []
     const find_user = await prisma.user.findFirst({
       where: {
         email: String(user.email),
         forgettoken: String(user.forgettoken)
       },
     });
-    if(find_user){
+    const date = new Date()
+    const currenttime = new Date(date.getTime()).toLocaleTimeString()
+    console.log(currenttime)
+   if(currenttime <= find_user.expiretime){
+    if (find_user) {
       const salt = await bcrypt.genSalt(10);
       const encryptedPassword = await bcrypt.hash(user.password, salt);
       user.password = encryptedPassword;
       const resp = await prisma.user.update({
-        where:{
+        where: {
           email: String(user.email)
         },
-        data:{
-          password:user.password,
-          forgettoken:null
-         }
-        });
-        res.status(200).json({
-          status: appConst.status.success,
-          response:resp,
-          message: appConst.status.success,
+        data: {
+          password: user.password,
+          // forgettoken: null
+        }
       });
-    }else{
-      res.status(400).json({
-        status:appConst.status.fail,
-        message: appConst.status.invalid_email,
-      });
+      data.push(resp)
+    } else {
+      errMsg.push({ message: appConst.status.invalid_email })
     }
+  }else{
+    errMsg.push({ message: appConst.status.token_expire })
+  }
+  if (errMsg.length > 0) {
+    res.status(400).json({
+      status: appConst.status.fail,
+      response: errMsg,
+      message: appConst.status.invalid_request,
+    });
+  } else {
+    res.status(200).json({
+      status: appConst.status.success,
+      response: { data },
+      message: appConst.status.success,
+    });
+  }
   } catch (error) {
     res.status(400).json({
-      status:appConst.status.fail,
+      status: appConst.status.fail,
       message: error.message,
     });
   }
 }
 
-module.exports = { add,login,emailSend,changepswd};
+// const expire = async (req, res) => {
+//   let user = JSON.parse(JSON.stringify(req.body.user));
+//   try {
+//     // let date = new Date()
+//     const find_user = await prisma.user.findUnique({
+//       where: {
+//         email: String(user.email),
+//       },
+//     });
+//     if (find_user) {
+//       user.forgettoken = jwt.sign({ email: find_user.email }, process.env.secretKey);
+//       const date = new Date()
+//       // const time = new Date(date.getTime() + 5 * 60000).toLocaleTimeString()
+//       const currenttime = new Date(date.getTime()).toLocaleTimeString()
+//       console.log(currenttime)
+//       // const resp = await prisma.user.update({
+//       //   where: {
+//       //     email: String(user.email),
+//       //   },
+//       //   data: {
+//       //     forgettoken: user.forgettoken,
+//       //     expiretime: time
+//       //   },
+//       // });
+//       console.log(find_user.expiretime)
+//       if(currenttime <= find_user.expiretime){
+//         console.log("success")
+//       }else{
+//         console.log("expire")
+//       }
+//       // const diff = currenttime - find_user.expiretime
+//       //  const result = Math.round((diff/1000)/60)
+//       // console.log(result)
+//     }
+//   } catch (error) {
+//     res.status(400).json({
+//       status: appConst.status.fail,
+//       message: error.message,
+//     });
+//   }
+// }
+
+
+module.exports = { add, login, emailSend, changepswd };
