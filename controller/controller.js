@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require("bcryptjs");
 const nodemailer = require('nodemailer');
 const appConst = require("../appConstants");
+const moment = require('moment')
 
 const prisma = new PrismaClient();
 //post
@@ -104,17 +105,19 @@ const emailSend = async (req, res) => {
     });
     if (find_user) {
       user.forgettoken = jwt.sign({ email: find_user.email }, process.env.secretKey);
-      const date = new Date()
-      // const time = new Date(date.getTime() + 1 * 60000).toLocaleTimeString()
-      const time = new Date(date.getTime() + 5 * 60000).toLocaleTimeString()
+      const date = moment().format();
+      const time = moment(date).add(1, 'minutes'); 
+      // const time = moment(date).add(5, 'minutes'); 
+      const expiretime = moment(time).format('LTS')
+      // const date = new Date()
+      // const time = new Date(date.getTime() + 5 * 60000).toLocaleTimeString()
       const resp = await prisma.user.update({
         where: {
           email: String(user.email),
         },
         data: {
           forgettoken: user.forgettoken,
-          expiretime: time
-
+          expiretime: expiretime
         },
       });
       const find_email = await prisma.user.findFirst({
@@ -189,43 +192,45 @@ const changepswd = async (req, res) => {
         forgettoken: String(user.forgettoken)
       },
     });
-    const date = new Date()
-    const currenttime = new Date(date.getTime()).toLocaleTimeString()
+    const currenttime =  moment().format('LTS');
     console.log(currenttime)
-   if(currenttime <= find_user.expiretime){
-    if (find_user) {
-      const salt = await bcrypt.genSalt(10);
-      const encryptedPassword = await bcrypt.hash(user.password, salt);
-      user.password = encryptedPassword;
-      const resp = await prisma.user.update({
-        where: {
-          email: String(user.email)
-        },
-        data: {
-          password: user.password,
-          // forgettoken: null
-        }
-      });
-      data.push(resp)
+    // const date = new Date()
+    // const currenttime = new Date(date.getTime()).toLocaleTimeString()
+    if (currenttime <= find_user.expiretime) {
+      if (find_user) {
+        const salt = await bcrypt.genSalt(10);
+        const encryptedPassword = await bcrypt.hash(user.password, salt);
+        user.password = encryptedPassword;
+        const resp = await prisma.user.update({
+          where: {
+            email: String(user.email)
+          },
+          data: {
+            password: user.password,
+            // forgettoken: null
+          }
+        });
+        data.push(resp)
+      } else {
+        errMsg.push({ message: appConst.status.invalid_email })
+      }
     } else {
-      errMsg.push({ message: appConst.status.invalid_email })
+
+      errMsg.push({ message: `token expired ${moment(find_user.expiretime,"hh:mm:ss A").fromNow()}` })
     }
-  }else{
-    errMsg.push({ message: appConst.status.token_expire })
-  }
-  if (errMsg.length > 0) {
-    res.status(400).json({
-      status: appConst.status.fail,
-      response: errMsg,
-      message: appConst.status.invalid_request,
-    });
-  } else {
-    res.status(200).json({
-      status: appConst.status.success,
-      response: { data },
-      message: appConst.status.success,
-    });
-  }
+    if (errMsg.length > 0) {
+      res.status(400).json({
+        status: appConst.status.fail,
+        response: errMsg,
+        message: appConst.status.invalid_request,
+      });
+    } else {
+      res.status(200).json({
+        status: appConst.status.success,
+        response: { data },
+        message: appConst.status.success,
+      });
+    }
   } catch (error) {
     res.status(400).json({
       status: appConst.status.fail,
@@ -233,6 +238,10 @@ const changepswd = async (req, res) => {
     });
   }
 }
+
+
+
+
 
 // const expire = async (req, res) => {
 //   let user = JSON.parse(JSON.stringify(req.body.user));
@@ -245,28 +254,33 @@ const changepswd = async (req, res) => {
 //     });
 //     if (find_user) {
 //       user.forgettoken = jwt.sign({ email: find_user.email }, process.env.secretKey);
-//       const date = new Date()
+//       const date = moment().format();
+//       console.log(date)
+//       // const time = moment(date).add(2, 'minutes'); 
+//       // const expiretime = moment(time).format()
+//       // console.log(expiretime);
+//       // const currenttime =  moment().format('LTS');
+//       // console.log(currenttime);
+//       // const expiretime = moment(time).format('LTS')
+//       // console.log(expiretime)
+//       // const date = new Date()
 //       // const time = new Date(date.getTime() + 5 * 60000).toLocaleTimeString()
-//       const currenttime = new Date(date.getTime()).toLocaleTimeString()
-//       console.log(currenttime)
+//       // const currenttime = new Date(date.getTime()).toLocaleTimeString()
 //       // const resp = await prisma.user.update({
 //       //   where: {
 //       //     email: String(user.email),
 //       //   },
 //       //   data: {
 //       //     forgettoken: user.forgettoken,
-//       //     expiretime: time
+//       //     expiretime: expiretime
 //       //   },
 //       // });
-//       console.log(find_user.expiretime)
-//       if(currenttime <= find_user.expiretime){
+//       // console.log(find_user.expiretime)
+//       if(date <= find_user.expiretime){
 //         console.log("success")
 //       }else{
 //         console.log("expire")
 //       }
-//       // const diff = currenttime - find_user.expiretime
-//       //  const result = Math.round((diff/1000)/60)
-//       // console.log(result)
 //     }
 //   } catch (error) {
 //     res.status(400).json({
@@ -276,5 +290,37 @@ const changepswd = async (req, res) => {
 //   }
 // }
 
+// const forgetPassword = async (req, res) => 
+// { try 
+//   {
+//      const findEmail = await prisma.user.findFirst(
+//       { where: { email: req.body.email }, });
+//        if (findEmail) {
+//          const token = jwt.sign({ data: req.body.email, }, "mysterykeytokengeneratedrandomly", { expiresIn: "15m", });
+//           mail.sendForgetPasswordMail(token, req.body.email, findEmail.firstName); 
+//           await prisma.user.update({ where: { email: req.body.email }, data: { changedPassword: true, }, }); 
+//           res.send({ message: token }); 
+//         } else { 
+//           res.send({ message: "oops! looks like you need to register with us first!", status: "Failed", }); 
+//         }
+//        } catch (error) { 
+//         res.send({ message: "no user found", status: "failed" }); 
+//       }
+//      };
+//     const checkForgetPassword = async (req, res) => {
+//        try { 
+//           const decoded = jwt.verify(req.body.token, "mysterykeytokengeneratedrandomly"); 
+//           const checkMail = await prisma.user.findFirst({ where: { email: decoded.data }, }); 
+//           if (decoded && checkMail.changedPassword) {
+//              encryptedPassword = await bcrypt.hash(req.body.password, 10); 
+//              const findEmail = await prisma.user.update({ where: { email: decoded.data }, data: { password: encryptedPassword, changedPassword: false, resetPassword: false, }, }); 
+//              res.send({ message: "changed succesfully" });
+//              } else {
+//               res.send({ message: "", status: "failed" });
+//              } 
+//             } catch (error) { 
+//               res.send({ error: error, status: "failed" }); 
+//             }
+//            };
 
-module.exports = { add, login, emailSend, changepswd };
+module.exports = { add, login, emailSend, changepswd};
